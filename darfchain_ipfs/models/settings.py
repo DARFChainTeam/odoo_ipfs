@@ -13,14 +13,11 @@ import hashlib
 import xmltodict
 from math import modf
 from lxml import etree
-#from xmljson import badgerfish as bf
 from xml.etree.ElementTree import fromstring
 from json import dumps
 import json
-import pywaves as pw
 import requests
 import base58
-import rethinkdb as r
 from subprocess import call
 import subprocess
 import os
@@ -37,16 +34,12 @@ class SettingConnect(models.Model):
 
     
     import_export = fields.Selection([('export', 'Export'), ('import', 'Import')],  string='Import/Export', default='export')
-    platforma = fields.Selection([('waves','Waves'),('ethereum','Ethereum')], string='Blockchain:',default='waves')
     ethereum_address = fields.Char(string="Ethereum contract interface")
     ethereum_pk = fields.Char(string="Ethereum contract address:")
     ethereum_node_address = fields.Char(string="Ethereum API address and port")
     ethereum_password = fields.Char(string="Ethereum password")
     export_node_address = fields.Char(string="Export Node Address")
     export_privat_key = fields.Text(string="Export Privat Key")
-    export_asset = fields.Text(string="Export Asset")
-    import_node = fields.Char(string="Import Node Address")
-    import_address = fields.Char(string="Import Waves Address")
     privat_key_import = fields.Text(string="Import Privat Key")
     import_asset = fields.Text(string="Import Asset")
     models = fields.One2many('models_setting','connect_id')
@@ -73,10 +66,9 @@ class SettingConnect(models.Model):
     gas_limit = fields.Float(string='Gas limit',compute='_gas_limit')
     gas_spent = fields.Float(string='Gas will be spent',compute='_gas_spent')
     ipfs_cluster_address = fields.Char(string='ipfs cluster address')
-    blockchain_db = fields.Selection([('bigchaindb','BigChainDB'),('ipfs','IPFS')])
     
-    def _run_cluster_service(self):
-        os.system("ipfs-cluster-service")
+    def _run_ipfs_daemon(self):
+        os.system("ipfs daemon")
     
     def _gas_limit(self):
         address_node = self.ethereum_node_address
@@ -123,15 +115,9 @@ class SettingConnect(models.Model):
         if self.import_export != 'export' and self.import_export != 'import':
             self.import_export = 'import'
             
-    @api.onchange('platforma')
-    def change_platforma(self):
-        _logger.info(self.platforma)
-        if self.platforma != 'waves' and self.platforma != 'ethereum':
-            self.platforma = 'waves'
-    
     @api.multi
     def synchronaze_button(self):
-        if self.platforma == 'ethereum' and self.gas_spent > self.gas_limit:
+        if self.gas_spent > self.gas_limit:
             raise UserError( _("You don't have enough gas!") )
         date_of_synchronization = dt.now()
         if self.import_export == 'export':
@@ -141,23 +127,7 @@ class SettingConnect(models.Model):
             #===================================================================
             # synchronize with waves and ethereum
             #===================================================================
-            #------------------------------------- synchronaze with waves blockchain
-            if self.platforma == 'waves':
-                pw.setNode(node = self.export_node_address, chain = 'testnet')
-                myAddress = pw.Address(privateKey=self.export_privat_key)
-                myAddress.sendWaves(myAddress, 110000, attachment=general_info_text,txFee=100000)
-            if self.platforma == 'ethereum' and self.blockchain_db == 'bigchaindb':
-                _logger.info('ethereum')
-                address_node = self.ethereum_node_address
-                web3 = Web3(HTTPProvider(address_node))
-                abi_json = self.ethereum_address
-                ethereum_contract_address = self.ethereum_pk
-                contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-                hash_of_synchronaze = '"'+base58.b58encode(general_info_text)+'"'
-                print hash_of_synchronaze
-                TransactionHashEthereum = contract.transact().setData(str(hash_of_synchronaze))
-            else:
-                TransactionHashEthereum = ''
+            TransactionHashEthereum = ''
             #------------------------------------------ create main data element with general info
             root = etree.Element("data")
             general_info = etree.SubElement(root,'general_info')
@@ -165,9 +135,8 @@ class SettingConnect(models.Model):
             #===================================================================
             # create main data element with transaction hash
             #===================================================================
-            if self.blockchain_db != 'bigchaindb':
-                ethereum_tx_hash = etree.SubElement(root,'ethereum_tx_hash')
-                ethereum_tx_hash.text = TransactionHashEthereum 
+            ethereum_tx_hash = etree.SubElement(root,'ethereum_tx_hash')
+            ethereum_tx_hash.text = TransactionHashEthereum 
             #----------------------- create element of model from setting wizard
             control_model_dict = {}
             if self.all_models:
@@ -290,90 +259,44 @@ class SettingConnect(models.Model):
             temp_file = open(file_to_save_with_path,'w')
             temp_file.write(xml_result)
             temp_file.close()
-            if self.blockchain_db == 'ipfs':
-                json_result = json.dumps(xmltodict.parse(xml_result))
-                file_json_save_path = '/tmp/'+general_info_text.replace(' ','_')+".json"
-                temp_file_json = open(file_json_save_path,'w')
-                temp_file_json.write(str(json_result))
-                temp_file_json.close()
-                write_to_ipfs_string = "ipfs add "+file_json_save_path
-                result_save_address = subprocess.check_output(write_to_ipfs_string, shell=True)
-                result_save_address = result_save_address.split(" ")[1]
-                print "test of save ipfs"
-                print result_save_address
-                if self.platforma == 'ethereum' and self.blockchain_db == 'ipfs':
-                    _logger.info('ethereum')
-                    address_node = self.ethereum_node_address
-                    web3 = Web3(HTTPProvider(address_node))
-                    abi_json = self.ethereum_address
-                    ethereum_contract_address = self.ethereum_pk
-                    contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-                    hash_of_synchronaze = '"'+base58.b58encode(general_info_text)+'"'
-                    print hash_of_synchronaze
-                    result_save_address = '"'+result_save_address+'"'
-                    #TransactionHashEthereum = contract.transact().setData(str(hash_of_synchronaze))
-                    address_of_file = contract.transact().setDocumentIPFSAddress(result_save_address)
-                    
-                    
-            else:
-                string = '/usr/bin/putbigchaindb.py --xml="'+file_to_save_with_path+'"'
-                #------------------------------------- synchronaze with waves blockchain
-    #             if self.platforma == 'waves':
-    #                 pw.setNode(node = self.export_node_address, chain = 'testnet')
-    #                 myAddress = pw.Address(privateKey=self.export_privat_key)
-    #                 myAddress.sendWaves(myAddress, 110000, attachment=general_info_text,txFee=100000)
-    #             if self.platforma == 'ethereum':
-    #                 _logger.info('ethereum')
-    #                 address_node = self.ethereum_node_address
-    #                 web3 = Web3(HTTPProvider(address_node))
-    #                 abi_json = self.ethereum_address
-    #                 ethereum_contract_address = self.ethereum_pk
-    #                 print ethereum_contract_address
-    #                 contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-    #                 hash_of_synchronaze = '"'+base58.b58encode(general_info_text)+'"'
-    #                 print hash_of_synchronaze
-    #                 contract.transact().setData(str(hash_of_synchronaze))
-                    
-                os.system(string)
             
-            #call(string, shell=True)
+            json_result = json.dumps(xmltodict.parse(xml_result))
+            file_json_save_path = '/tmp/'+general_info_text.replace(' ','_')+".json"
+            temp_file_json = open(file_json_save_path,'w')
+            temp_file_json.write(str(json_result))
+            temp_file_json.close()
+            write_to_ipfs_string = "ipfs add "+file_json_save_path
+            result_save_address = subprocess.check_output(write_to_ipfs_string, shell=True)
+            result_save_address = result_save_address.split(" ")[1]
+            print "test of save ipfs"
+            print result_save_address
+            _logger.info('ethereum')
+            address_node = self.ethereum_node_address
+            web3 = Web3(HTTPProvider(address_node))
+            abi_json = self.ethereum_address
+            ethereum_contract_address = self.ethereum_pk
+            contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
+            hash_of_synchronaze = '"'+base58.b58encode(general_info_text)+'"'
+            print hash_of_synchronaze
+            result_save_address = '"'+result_save_address+'"'
+            #TransactionHashEthereum = contract.transact().setData(str(hash_of_synchronaze))
+            address_of_file = contract.transact().setDocumentIPFSAddress(result_save_address)
             #self.xml_for_synchronization = dumps(xmltodict.parse(etree.tostring(root, pretty_print=True)))
         else:
             _logger.info('start import')
-            if self.platforma == 'waves':
-                url_of_access = self.import_node+'/transactions/address/'+self.import_address+'/limit/100'
-                result_waves = requests.get(url_of_access)
-      
-                attachment = result_waves.json()[0][0]['attachment']
-                attachment = base58.b58decode(attachment)
-                print attachment
-            if self.platforma == 'ethereum' and self.blockchain_db == 'bigchaindb':
-                attachment = 'test'
-                address_node = self.ethereum_node_address
-                web3 = Web3(HTTPProvider(address_node))
-                abi_json = self.ethereum_address
-                ethereum_contract_address = self.ethereum_pk
-                contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-                hash_from_ethereum = contract.call().HashOfDB()
-                print hash_from_ethereum
-                attachment = base58.b58decode(hash_from_ethereum.replace('"',''))
-            if self.blockchain_db == 'ethereum':
-                conn = r.connect('goldsoft.org', 28015).repl()
-                get_result = r.db('bigchain').table('assets').filter({'data':{"general_info":  attachment}}).run(conn)
-            if self.blockchain_db == 'ipfs':
-                address_node = self.ethereum_node_address
-                web3 = Web3(HTTPProvider(address_node))
-                abi_json = self.ethereum_address
-                ethereum_contract_address = self.ethereum_pk
-                contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-                ipfs_address = contract.call().getDocumentIPFSAddress()
-                get_json_string = "ipfs cat "+ipfs_address
-                result_json = {}
-                result_json = subprocess.check_output(get_json_string, shell=True)
-                result_json = json.loads(result_json)
-                get_result = []
-                get_result.append(result_json)
-                print get_result
+            address_node = self.ethereum_node_address
+            web3 = Web3(HTTPProvider(address_node))
+            abi_json = self.ethereum_address
+            ethereum_contract_address = self.ethereum_pk
+            contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
+            ipfs_address = contract.call().getDocumentIPFSAddress()
+            get_json_string = "ipfs cat "+ipfs_address
+            result_json = {}
+            result_json = subprocess.check_output(get_json_string, shell=True)
+            result_json = json.loads(result_json)
+            get_result = []
+            get_result.append(result_json)
+            print get_result
             dict_for_record  = {}
             excepted_fields = ['password_crypt','id','create_date','create_uid','__last_update','message_ids','login_date','mail_followers','write_date','message_last_post','validity_date','message_is_follower']
             for item_import in get_result:

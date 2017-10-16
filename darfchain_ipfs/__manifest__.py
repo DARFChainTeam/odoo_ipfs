@@ -1,5 +1,5 @@
 {
-    'name': "Blockchain Waves Synchro",
+    'name': "ERP IPFS ICO control",
     'version': '1.0',
     'depends': ['base',
                 'sale',
@@ -11,17 +11,13 @@
                 'portal_sale',
                 'website_portal',
                 'website_payment',],
-    'author': "Sergey Stepanets",
+    'author': "Darfchain",
     'category': 'Application',
     'description': """
-    Module for blockchain synchro
+    Module for synchronization with ICO ERP with IPFS
     """,
     'data': [
-     'views/setting.xml',
-     'data/cron.xml',
-     'views/clients.xml',
-     'views/sale_order.xml',
-     'views/journal_signature.xml',
-#     'views/report.xml',
+     'views/settings.xml',
+     
     ],
 }
