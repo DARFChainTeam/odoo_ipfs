@@ -18,6 +18,7 @@
     """,
     'data': [
      'views/settings.xml',
+     #'views/journal_signature.xml',
      
     ],
 }
