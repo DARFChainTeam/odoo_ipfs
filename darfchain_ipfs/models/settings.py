@@ -77,12 +77,9 @@ class SettingConnect(models.Model):
         ethereum_contract_address = self.ethereum_pk
         print ethereum_contract_address
         contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
-        if self.platforma == 'ethereum':
-            try:
-                result_of_gas_limit = contract.call().getGasLimit()
-            except:
-                result_of_gas_limit = 0
-        else:
+        try:
+            result_of_gas_limit = contract.call().getGasLimit()
+        except:
             result_of_gas_limit = 0
         self.gas_limit = result_of_gas_limit
     def _gas_spent(self):
@@ -100,13 +97,11 @@ class SettingConnect(models.Model):
                 result_of_gas_estimate = contract.estimateGas().setData(str(hash_of_synchronaze))
             except:
                 result_of_gas_estimate = 0
-        if self.platforma == 'ethereum' and self.import_export == 'import':
+        if  self.import_export == 'import':
             try:
                 result_of_gas_estimate = contract.estimateGas().HashOfDB()
             except:
                 result_of_gas_estimate = 0
-        if self.platforma == 'waves':
-            result_of_gas_estimate = 0
         self.gas_spent = result_of_gas_estimate
         
     @api.onchange('import_export')
