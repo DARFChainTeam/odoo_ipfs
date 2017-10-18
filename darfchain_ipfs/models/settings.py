@@ -95,7 +95,7 @@ class SettingConnect(models.Model):
         contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
         hash_of_synchronaze = '"'+base58.b58encode(str(date_of_synchronization))+'"'
         print hash_of_synchronaze
-        if self.platforma == 'ethereum' and self.import_export == 'export':
+        if self.import_export == 'export':
             try:
                 result_of_gas_estimate = contract.estimateGas().setData(str(hash_of_synchronaze))
             except:
