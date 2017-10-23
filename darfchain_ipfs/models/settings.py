@@ -1,7 +1,7 @@
 from openerp import models, fields, api
 from openerp.tools.translate import _
 import logging
-#from fingerprint import Fingerprint
+# from fingerprint import Fingerprint
 from dateutil import relativedelta
 from datetime import datetime as dt
 from dateutil import parser
@@ -24,16 +24,18 @@ import os
 import ast
 from openerp.exceptions import UserError
 from web3 import Web3, HTTPProvider, IPCProvider
+import ipfsapi
+import io
 
 _logger = logging.getLogger(__name__)
+
 
 class SettingConnect(models.Model):
     
     _name = 'setting.connect'
-    _defaluts = {'import_export' : 'export',}
-
+    _defaluts = {'import_export': 'export', }
     
-    import_export = fields.Selection([('export', 'Export'), ('import', 'Import')],  string='Import/Export', default='export')
+    import_export = fields.Selection([('export', 'Export'), ('import', 'Import')], string='Import/Export', default='export')
     ethereum_address = fields.Char(string="Ethereum contract interface")
     ethereum_pk = fields.Char(string="Ethereum contract address:")
     ethereum_node_address = fields.Char(string="Ethereum API address and port")
@@ -44,7 +46,7 @@ class SettingConnect(models.Model):
     import_asset = fields.Text(string="Import Asset")
     models = fields.One2many('models_setting','connect_id')
     all_models = fields.Boolean(string="All models")
-    #send period
+    # send period
     send_period = fields.Selection([('day', 'Every day'),('week', 'Weekly'),('month','Monthly'),('Period','Time period of synchronization')],string="Period of synchronization")
     week_day = fields.Selection([
             ('0', 'Mn'),
@@ -82,6 +84,7 @@ class SettingConnect(models.Model):
         except:
             result_of_gas_limit = 0
         self.gas_limit = result_of_gas_limit
+
     def _gas_spent(self):
         date_of_synchronization = dt.now()
         address_node = self.ethereum_node_address
@@ -89,7 +92,7 @@ class SettingConnect(models.Model):
         abi_json = self.ethereum_address
         ethereum_contract_address = self.ethereum_pk
         print ethereum_contract_address
-        contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
+        contract = web3.eth.contract(abi=json.loads(abi_json), address=ethereum_contract_address)
         hash_of_synchronaze = '"'+base58.b58encode(str(date_of_synchronization))+'"'
         print hash_of_synchronaze
         if self.import_export == 'export':
@@ -97,19 +100,19 @@ class SettingConnect(models.Model):
                 result_of_gas_estimate = contract.estimateGas().setData(str(hash_of_synchronaze))
             except:
                 result_of_gas_estimate = 0
-        if  self.import_export == 'import':
+        if self.import_export == 'import':
             try:
                 result_of_gas_estimate = contract.estimateGas().HashOfDB()
             except:
                 result_of_gas_estimate = 0
         self.gas_spent = result_of_gas_estimate
-        
+
     @api.onchange('import_export')
     def change_export(self):
         _logger.info(self.import_export)
         if self.import_export != 'export' and self.import_export != 'import':
             self.import_export = 'import'
-            
+
     @api.multi
     def synchronaze_button(self):
         if self.gas_spent > self.gas_limit:
@@ -117,13 +120,13 @@ class SettingConnect(models.Model):
         date_of_synchronization = dt.now()
         if self.import_export == 'export':
             res = self.env['journal.of.export'].create({'date_of_export':date_of_synchronization})
-            #-------------get general info timestemp for synchronization with waves and than search of this record in bigchaindb
+            # -------------get general info timestemp for synchronization with waves and than search of this record in bigchaindb
             general_info_text = str(date_of_synchronization)+'_'+str(res.id)
-            #===================================================================
+            # ===================================================================
             # synchronize with waves and ethereum
-            #===================================================================
+            # ===================================================================
             TransactionHashEthereum = ''
-            #------------------------------------------ create main data element with general info
+            # ------------------------------------------ create main data element with general info
             root = etree.Element("data")
             general_info = etree.SubElement(root,'general_info')
             general_info.text=general_info_text
@@ -250,21 +253,26 @@ class SettingConnect(models.Model):
             xml_result = etree.tostring(root, pretty_print=False)
             #xml_result = xml_result.replace('"','\\"')
             #-------------------------------------------- write xml to temp file
-            file_to_save_with_path = '/tmp/'+general_info_text
-            temp_file = open(file_to_save_with_path,'w')
-            temp_file.write(xml_result)
-            temp_file.close()
+#             file_to_save_with_path = '/tmp/'+general_info_text
+#             temp_file = open(file_to_save_with_path,'w')
+#             temp_file.write(xml_result)
+#             temp_file.close()
             
             json_result = json.dumps(xmltodict.parse(xml_result))
-            file_json_save_path = '/tmp/'+general_info_text.replace(' ','_')+".json"
-            temp_file_json = open(file_json_save_path,'w')
-            temp_file_json.write(str(json_result))
-            temp_file_json.close()
-            write_to_ipfs_string = "ipfs add "+file_json_save_path
-            result_save_address = subprocess.check_output(write_to_ipfs_string, shell=True)
-            result_save_address = result_save_address.split(" ")[1]
+#             file_json_save_path = '/tmp/'+general_info_text.replace(' ','_')+".json"
+#             temp_file_json = open(file_json_save_path,'w')
+#             temp_file_json.write(str(json_result))
+#             temp_file_json.close()
+#             write_to_ipfs_string = "ipfs add "+file_json_save_path
+#             result_save_address = subprocess.check_output(write_to_ipfs_string, shell=True)
+#             result_save_address = result_save_address.split(" ")[1]
+            apifs_node_api = ipfsapi.Client('localhost',5001)
+            with io.open('tmp.json', 'w', encoding='utf-8') as f:
+                result_of_file = f.write(unicode(json_result))
             print "test of save ipfs"
-            print result_save_address
+            res = apifs_node_api.add('tmp.json')
+            print res
+            result_save_address = str(res['Hash']) 
             _logger.info('ethereum')
             address_node = self.ethereum_node_address
             web3 = Web3(HTTPProvider(address_node))
@@ -285,10 +293,13 @@ class SettingConnect(models.Model):
             ethereum_contract_address = self.ethereum_pk
             contract =  web3.eth.contract(abi = json.loads(abi_json), address=ethereum_contract_address)
             ipfs_address = contract.call().getDocumentIPFSAddress()
-            get_json_string = "ipfs cat "+ipfs_address
+            ipfs_node_api = ipfsapi.Client('localhost', 5001)
+            get_json_string = ipfs_node_api.cat(str(ipfs_address[1:-1]))
+            print get_json_string
+            #get_json_string = "ipfs cat "+ipfs_address[1:-1]
             result_json = {}
-            result_json = subprocess.check_output(get_json_string, shell=True)
-            result_json = json.loads(result_json)
+            #result_json = subprocess.check_output(get_json_string, shell=True)
+            result_json = json.loads(get_json_string)
             get_result = []
             get_result.append(result_json)
             print get_result
